@@ -1,3 +1,5 @@
+import os
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 import cv2
 import mediapipe as mp
 import numpy as np
@@ -8,7 +10,6 @@ import math
 mp_pose = mp.solutions.pose
 mp_drawing = mp.solutions.drawing_utils
 mp_drawing_styles = mp.solutions.drawing_styles
-
 
 class CircleGame:
     def __init__(self, frame_width, frame_height):
@@ -124,126 +125,135 @@ def draw_collision_effect(frame, circle_x, circle_y, radius):
                    effect_color, 2, lineType=cv2.LINE_AA)
 
 
-# 初始化摄像头
-cap = cv2.VideoCapture(0)
+def main():
+    print("等待摄像头画面...")
+    # 初始化摄像头
+    cap = cv2.VideoCapture(0)
 
-# 获取摄像头分辨率
-frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    # 获取摄像头分辨率
+    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-print(f"摄像头分辨率: {frame_width} x {frame_height}")
+    print(f"摄像头分辨率: {frame_width} x {frame_height}")
 
-# 初始化游戏
-game = CircleGame(frame_width, frame_height)
+    # 初始化游戏
+    game = CircleGame(frame_width, frame_height)
 
-# 创建 Pose 实例
-with mp_pose.Pose(
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5,
-        model_complexity=1
-) as pose:
-    # FPS 计算变量
-    fps = 0
-    frame_count = 0
-    start_time = cv2.getTickCount()
+    # 创建 Pose 实例
+    with mp_pose.Pose(
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5,
+            model_complexity=1
+    ) as pose:
+        # FPS 计算变量
+        fps = 0
+        frame_count = 0
+        start_time = cv2.getTickCount()
 
-    while cap.isOpened():
-        success, frame = cap.read()
-        if not success:
-            print("无法读取摄像头画面")
-            break
+        while cap.isOpened():
+            #print("等待摄像头画面...")
+            success, frame = cap.read()
+            if not success:
+                print("无法读取摄像头画面")
+                break
 
-        # 水平翻转画面，让镜子效果更自然
-        frame = cv2.flip(frame, 1)
+            # 水平翻转画面，让镜子效果更自然
+            frame = cv2.flip(frame, 1)
 
-        # 转换颜色空间
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            # 转换颜色空间
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        # 处理帧
-        results = pose.process(frame_rgb)
+            # 处理帧
+            results = pose.process(frame_rgb)
 
-        # 绘制姿态关键点
-        if results.pose_landmarks:
-            mp_drawing.draw_landmarks(
-                frame,
-                results.pose_landmarks,
-                mp_pose.POSE_CONNECTIONS,
-                landmark_drawing_spec=mp_drawing_styles.get_default_pose_landmarks_style()
-            )
+            # 绘制姿态关键点
+            if results.pose_landmarks:
+                mp_drawing.draw_landmarks(
+                    frame,
+                    results.pose_landmarks,
+                    mp_pose.POSE_CONNECTIONS,
+                    landmark_drawing_spec=mp_drawing_styles.get_default_pose_landmarks_style()
+                )
 
-            # 获取左右手坐标
-            right_hand_x, right_hand_y = get_hand_coordinates(results.pose_landmarks, 'right')
-            left_hand_x, left_hand_y = get_hand_coordinates(results.pose_landmarks, 'left')
+                # 获取左右手坐标
+                right_hand_x, right_hand_y = get_hand_coordinates(results.pose_landmarks, 'right')
+                left_hand_x, left_hand_y = get_hand_coordinates(results.pose_landmarks, 'left')
 
-            # 绘制手部位置
-            draw_hand_position(frame, right_hand_x, right_hand_y, 'right')
-            draw_hand_position(frame, left_hand_x, left_hand_y, 'left')
+                # 绘制手部位置
+                draw_hand_position(frame, right_hand_x, right_hand_y, 'right')
+                draw_hand_position(frame, left_hand_x, left_hand_y, 'left')
 
-            # 检查碰撞
-            collision_occurred = False
+                # 检查碰撞
+                collision_occurred = False
 
-            # 检查右手碰撞
-            if game.check_collision(right_hand_x, right_hand_y):
-                collision_occurred = True
-                if right_hand_x and right_hand_y:
-                    draw_collision_effect(frame, right_hand_x, right_hand_y, 20)
+                # 检查右手碰撞
+                if game.check_collision(right_hand_x, right_hand_y):
+                    collision_occurred = True
+                    if right_hand_x and right_hand_y:
+                        draw_collision_effect(frame, right_hand_x, right_hand_y, 20)
 
-            # 检查左手碰撞
-            if game.check_collision(left_hand_x, left_hand_y):
-                collision_occurred = True
-                if left_hand_x and left_hand_y:
-                    draw_collision_effect(frame, left_hand_x, left_hand_y, 20)
+                # 检查左手碰撞
+                if game.check_collision(left_hand_x, left_hand_y):
+                    collision_occurred = True
+                    if left_hand_x and left_hand_y:
+                        draw_collision_effect(frame, left_hand_x, left_hand_y, 20)
 
-            # 如果发生碰撞，生成新圆圈并加分
-            if collision_occurred:
-                game.score += 1
+                # 如果发生碰撞，生成新圆圈并加分
+                if collision_occurred:
+                    game.score += 1
+                    game.generate_new_circle()
+
+                    # 短暂的碰撞特效
+                    for _ in range(3):
+                        draw_collision_effect(frame, game.circle_x, game.circle_y, game.circle_radius)
+
+            # 绘制圆圈
+            game.draw_circle(frame)
+
+            # 绘制分数
+            game.draw_score(frame)
+
+            # 绘制游戏说明
+            game.draw_instructions(frame)
+
+            # 计算并显示FPS
+            frame_count += 1
+            if frame_count >= 30:
+                end_time = cv2.getTickCount()
+                time_diff = (end_time - start_time) / cv2.getTickFrequency()
+                fps = frame_count / time_diff
+                frame_count = 0
+                start_time = end_time
+
+            cv2.putText(frame, f"FPS: {fps:.1f}", (10, 90),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+            # 检测到人体时的提示
+            if results.pose_landmarks:
+                cv2.putText(frame, "Body Detected", (frame_width - 200, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+            else:
+                cv2.putText(frame, "No Body Detected", (frame_width - 200, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+
+            # 显示画面
+            cv2.imshow('Fitness Circle Game', frame)
+
+            # 键盘控制
+            key = cv2.waitKey(5) & 0xFF
+            if key == ord('q'):  # 退出
+                break
+            elif key == ord('r'):  # 重置分数
+                game.score = 0
+                game.generate_new_circle()
+            elif key == ord('n'):  # 手动生成新圆圈
                 game.generate_new_circle()
 
-                # 短暂的碰撞特效
-                for _ in range(3):
-                    draw_collision_effect(frame, game.circle_x, game.circle_y, game.circle_radius)
+    cap.release()
+    cv2.destroyAllWindows()
 
-        # 绘制圆圈
-        game.draw_circle(frame)
+    pass
 
-        # 绘制分数
-        game.draw_score(frame)
 
-        # 绘制游戏说明
-        game.draw_instructions(frame)
-
-        # 计算并显示FPS
-        frame_count += 1
-        if frame_count >= 30:
-            end_time = cv2.getTickCount()
-            time_diff = (end_time - start_time) / cv2.getTickFrequency()
-            fps = frame_count / time_diff
-            frame_count = 0
-            start_time = end_time
-
-        cv2.putText(frame, f"FPS: {fps:.1f}", (10, 90),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-
-        # 检测到人体时的提示
-        if results.pose_landmarks:
-            cv2.putText(frame, "Body Detected", (frame_width - 200, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-        else:
-            cv2.putText(frame, "No Body Detected", (frame_width - 200, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-
-        # 显示画面
-        cv2.imshow('Fitness Circle Game', frame)
-
-        # 键盘控制
-        key = cv2.waitKey(5) & 0xFF
-        if key == ord('q'):  # 退出
-            break
-        elif key == ord('r'):  # 重置分数
-            game.score = 0
-            game.generate_new_circle()
-        elif key == ord('n'):  # 手动生成新圆圈
-            game.generate_new_circle()
-
-cap.release()
-cv2.destroyAllWindows()
+if __name__ =="__main__":
+    main()
